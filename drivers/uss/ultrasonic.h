@@ -1,7 +1,8 @@
-#ifndef ultrasonic_h
-#define ultrasonic_h
-void setupUltrasonicPins(int trigPin, int echoPin);
-int getCm(int trigPin, int echoPin);
-int getInch(int trigPin, int echoPin);
-void emergencyStopIfTooClose(int trigPin, int echoPin, int threshold_cm);
-#endif
+#pragma once
+#include "pico/stdlib.h"
+#include <stdbool.h>
+
+void setupUltrasonicPins(uint trigPin, uint echoPin);
+int  getCm(uint trigPin, uint echoPin);      
+int  getInch(uint trigPin, uint echoPin);    
+bool emergencyStopIfTooClose(uint trigPin, uint echoPin, int threshold_cm);

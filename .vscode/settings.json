@@ -1,5 +1,7 @@
 {
-    "files.associations": {
-        "pico_pins.h": "c"
-    }
+  "files.associations": {
+    "pico_pins.h": "c"
+  },
+  "cmake.cmakePath": "C:/Program Files/CMake/bin/cmake.exe",
+  "cmake.generator": "Ninja"
 }
