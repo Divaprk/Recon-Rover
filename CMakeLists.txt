@@ -1,43 +1,40 @@
 cmake_minimum_required(VERSION 3.13)
+include(pico_sdk_import.cmake)
 
-# 0) Board & SDK
-# (Do this before pico_sdk_init so toolchain/defines are correct)
-set(PICO_BOARD pico_w)  # <-- IMPORTANT for Wi-Fi/cyw43
-include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
-
-project(recon_rover C CXX ASM)
+project(Recon-Rover C CXX ASM)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
+set(PICO_BOARD pico_w)
 pico_sdk_init()
 
-# 1) Sub-libs
-add_subdirectory(drivers/teleop)
-
-# 2) App
-add_executable(recon_rover
-  src/main.c
-  src/util.c
-  src/net_io.c
+# --- MODIFICATION 1 ---
+# Add all your .c files here.
+# CMake needs to know about main.c AND the new driver files.
+add_executable(Recon-Rover
+    main.c
+    drivers/motor.c
+    drivers/encoder.c
 )
 
-# Only your project headers (and where lwipopts.h lives)
-target_include_directories(recon_rover PRIVATE
-  ${CMAKE_CURRENT_LIST_DIR}
-  ${CMAKE_CURRENT_LIST_DIR}/include
+# --- MODIFICATION 2 ---
+# Add the 'drivers' directory to the include path.
+# This lets main.c find #include "drivers/motor.h"
+target_include_directories(Recon-Rover BEFORE PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}/drivers
+    $ENV{PICO_SDK_PATH}/src/rp2_common/pico_lwip/include
 )
 
-target_link_libraries(recon_rover
-  pico_stdlib
-  hardware_gpio
-  hardware_timer
-  hardware_i2c
-  hardware_uart
-  hardware_pwm
-  pico_lwip
-  pico_cyw43_arch_lwip_threadsafe_background
-  pico_async_context
-  pico_rand
-  teleop_driver
+# --- MERGED library list (No changes here) ---
+target_link_libraries(Recon-Rover
+    pico_stdlib
+    hardware_gpio
+    pico_lwip
+    pico_cyw43_arch_lwip_threadsafe_background
 )
 
-pico_enable_stdio_usb(recon_rover 1)
-pico_enable_stdio_uart(recon_rover 0)
-pico_add_extra_outputs(recon_rover)
+# --- Stdio / Float / UF2 (No changes here) ---
+pico_enable_stdio_usb(Recon-Rover 1)
+pico_enable_stdio_uart(Recon-Rover 0)
+target_link_options(Recon-Rover PRIVATE -Wl,-u,_printf_float)
+pico_add_extra_outputs(Recon-Rover)

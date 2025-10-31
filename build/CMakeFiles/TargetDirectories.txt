@@ -1,4 +1,4 @@
-C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/CMakeFiles/recon_rover.dir
+C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/CMakeFiles/Recon-Rover.dir
 C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/CMakeFiles/edit_cache.dir
 C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/CMakeFiles/rebuild_cache.dir
 C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/pico-sdk/CMakeFiles/edit_cache.dir
@@ -167,6 +167,3 @@ C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded S
 C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/pico-sdk/src/rp2040/hardware_structs/CMakeFiles/rebuild_cache.dir
 C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/pico-sdk/docs/CMakeFiles/edit_cache.dir
 C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/pico-sdk/docs/CMakeFiles/rebuild_cache.dir
-C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/drivers/teleop/CMakeFiles/teleop_driver.dir
-C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/drivers/teleop/CMakeFiles/edit_cache.dir
-C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/drivers/teleop/CMakeFiles/rebuild_cache.dir

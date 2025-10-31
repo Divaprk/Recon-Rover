@@ -6,7 +6,7 @@
 # It is included in the main 'build.ninja'.
 
 # =============================================================================
-# Project: recon_rover
+# Project: Recon-Rover
 # Configurations: Debug
 # =============================================================================
 # =============================================================================
@@ -14,7 +14,7 @@
 #############################################
 # Rule for compiling ASM files.
 
-rule ASM_COMPILER__recon_rover_Debug
+rule ASM_COMPILER__Recon-Rover_Debug
   depfile = $DEP_FILE
   deps = gcc
   command = C:\PROGRA~2\ARMGNU~1\14EFD8~1.2RE\bin\AR19DD~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out   -c $in
@@ -24,7 +24,7 @@ rule ASM_COMPILER__recon_rover_Debug
 #############################################
 # Rule for compiling C files.
 
-rule C_COMPILER__recon_rover_Debug
+rule C_COMPILER__Recon-Rover_Debug
   depfile = $DEP_FILE
   deps = gcc
   command = C:\PROGRA~2\ARMGNU~1\14EFD8~1.2RE\bin\AR19DD~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
@@ -34,7 +34,7 @@ rule C_COMPILER__recon_rover_Debug
 #############################################
 # Rule for compiling CXX files.
 
-rule CXX_COMPILER__recon_rover_Debug
+rule CXX_COMPILER__Recon-Rover_Debug
   depfile = $DEP_FILE
   deps = gcc
   command = C:\PROGRA~2\ARMGNU~1\14EFD8~1.2RE\bin\AR10B2~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
@@ -44,7 +44,7 @@ rule CXX_COMPILER__recon_rover_Debug
 #############################################
 # Rule for linking CXX executable.
 
-rule CXX_EXECUTABLE_LINKER__recon_rover_Debug
+rule CXX_EXECUTABLE_LINKER__Recon-Rover_Debug
   command = cmd.exe /C "$PRE_LINK && C:\PROGRA~2\ARMGNU~1\14EFD8~1.2RE\bin\AR10B2~1.EXE $FLAGS -Wl,--build-id=none $LINK_FLAGS @$RSP_FILE -o $TARGET_FILE  && $POST_BUILD"
   description = Linking CXX executable $TARGET_FILE
   rspfile = $RSP_FILE
@@ -76,45 +76,6 @@ rule ASM_COMPILER__bs2_default_Debug
 rule ASM_EXECUTABLE_LINKER__bs2_default_Debug
   command = cmd.exe /C "$PRE_LINK && C:\PROGRA~2\ARMGNU~1\14EFD8~1.2RE\bin\AR19DD~1.EXE $FLAGS -Wl,--build-id=none $LINK_FLAGS $in -o $TARGET_FILE $LINK_PATH $LINK_LIBRARIES && $POST_BUILD"
   description = Linking ASM executable $TARGET_FILE
-  restat = $RESTAT
-
-
-#############################################
-# Rule for compiling ASM files.
-
-rule ASM_COMPILER__teleop_driver_Debug
-  depfile = $DEP_FILE
-  deps = gcc
-  command = C:\PROGRA~2\ARMGNU~1\14EFD8~1.2RE\bin\AR19DD~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out   -c $in
-  description = Building ASM object $out
-
-
-#############################################
-# Rule for compiling C files.
-
-rule C_COMPILER__teleop_driver_Debug
-  depfile = $DEP_FILE
-  deps = gcc
-  command = C:\PROGRA~2\ARMGNU~1\14EFD8~1.2RE\bin\AR19DD~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
-  description = Building C object $out
-
-
-#############################################
-# Rule for compiling CXX files.
-
-rule CXX_COMPILER__teleop_driver_Debug
-  depfile = $DEP_FILE
-  deps = gcc
-  command = C:\PROGRA~2\ARMGNU~1\14EFD8~1.2RE\bin\AR10B2~1.EXE $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
-  description = Building CXX object $out
-
-
-#############################################
-# Rule for linking CXX static library.
-
-rule CXX_STATIC_LIBRARY_LINKER__teleop_driver_Debug
-  command = cmd.exe /C "$PRE_LINK && "C:\Program Files\Raspberry Pi\Pico SDK v1.5.1\cmake\bin\cmake.exe" -E rm -f $TARGET_FILE && C:\PROGRA~2\ARMGNU~1\14EFD8~1.2RE\bin\ARM-NO~2.EXE qc $TARGET_FILE $LINK_FLAGS $in && C:\PROGRA~2\ARMGNU~1\14EFD8~1.2RE\bin\AR17F9~1.EXE $TARGET_FILE && $POST_BUILD"
-  description = Linking CXX static library $TARGET_FILE
   restat = $RESTAT
 
 
