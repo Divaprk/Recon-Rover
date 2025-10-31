@@ -1,4 +1,3 @@
-// if both sides go opposite way, distance should have positive and negative. need circumference of tank wheel
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
@@ -46,7 +45,7 @@ static bool print_cb(repeating_timer_t *t) {
     printf("ticks=%lu | rpm=%.2f | speed=%.1f mm/s | +%.1f mm | total=%.1f mm\n",
            (unsigned long)ticks, rpm, mm_per_s, mm_this, distance_mm_total);
 
-    return true; // keep repeating
+    return true;
 }
 
 int main(void) {
