@@ -4,18 +4,28 @@
 #include <stdio.h>
 #include "motor.h"
 
-#define STOP_CM         20
-#define CLEAR_CM        28
-#define TIMEOUT_ECHO_US 26000
-#define SAMPLE_COUNT    5
-#define PIVOT_MS_90     240
-#define DRIVE_MS        450
-#define CHECK_PAUSE_MS  120
-#define FORWARD_CLEAR_MS 600
-#define MAX_SIDE_STEPS  20
+/* ---------- Clear/Stop thresholds ---------- */
+#define STOP_CM           30     
+#define CLEAR_CM          40    
 
-static inline int ms_for_deg(int deg) { return (deg * PIVOT_MS_90) / 90; }
+/* ---------- Ultrasonic timing ---------- */
+#define TIMEOUT_ECHO_US   26000
+#define SAMPLE_COUNT      5
 
+/* ---------- Turning/drive calibration ---------- */
+#define PIVOT_MS_90_LEFT   250   // ms that gives ~90° when pivoting LEFT
+#define PIVOT_MS_90_RIGHT  235   // ms that gives ~90° when pivoting RIGHT
+#define TURNBACK_BIAS_DEG    5   // extra degrees on the turn-back to re-center (compensate drift)
+#define DRIVE_MS            500  // how far to slide per side step (increase if want bigger sidestep)
+#define CHECK_PAUSE_MS      120  // settle before reading
+#define FORWARD_CLEAR_MS    650  // forward time once clear
+#define MAX_SIDE_STEPS       20  // safety cap
+
+/* ---------- helpers to convert degrees -> ms per side ---------- */
+static inline int ms_for_deg_left(int deg)  { return (deg * PIVOT_MS_90_LEFT)  / 90; }
+static inline int ms_for_deg_right(int deg) { return (deg * PIVOT_MS_90_RIGHT) / 90; }
+
+/* ---------------- Ultrasonic sampling ---------------- */
 static inline uint32_t pulse_us(void) {
     gpio_put(ULTRA_TRIG_PIN, 1); sleep_us(10); gpio_put(ULTRA_TRIG_PIN, 0);
     absolute_time_t t0 = get_absolute_time();
@@ -36,6 +46,7 @@ static uint32_t median5(uint32_t a[5]) {
     return a[2];
 }
 
+/* ---------------- Public API ---------------- */
 void ultra_init(void) {
     gpio_init(ULTRA_TRIG_PIN); gpio_set_dir(ULTRA_TRIG_PIN, GPIO_OUT); gpio_put(ULTRA_TRIG_PIN, 0);
     gpio_init(ULTRA_ECHO_PIN); gpio_set_dir(ULTRA_ECHO_PIN, GPIO_IN);
@@ -49,7 +60,7 @@ uint32_t ultra_read_cm(void) {
         sleep_ms(8);
     }
     uint32_t m = median5(v);
-    if (m == 0) {
+    if (m == 0) {                  // retry once if timeout/no echo
         uint32_t us2 = pulse_us();
         m = us2 ? (us2/58) : 0;
     }
@@ -71,6 +82,7 @@ void ultra_apply_direct(DriveCmd cmd) {
     }
 }
 
+/* ---------------- Side-step-until-clear FSM ---------------- */
 typedef enum { MODE_MANUAL=0, MODE_AVOID } Mode;
 
 typedef enum {
@@ -98,12 +110,18 @@ static Avoidor A = {0};
 static inline void set_until_ms(int ms){ A.until = delayed_by_ms(get_absolute_time(), ms); }
 static inline bool due(void){ return absolute_time_diff_us(get_absolute_time(), A.until) <= 0; }
 
-static inline void do_left_90(void){ motor_left();     set_until_ms(ms_for_deg(90)); }
-static inline void do_right_90(void){ motor_right();   set_until_ms(ms_for_deg(90)); }
+/* degree-based timed motor helpers using per-side calibration */
+static inline void turn_left_deg(int deg){  motor_left();  set_until_ms(ms_for_deg_left(deg)); }
+static inline void turn_right_deg(int deg){ motor_right(); set_until_ms(ms_for_deg_right(deg)); }
+
+static inline void do_left_90(void){  turn_left_deg(90); }
+static inline void do_right_90(void){ turn_right_deg(90); }
 static inline void do_drive_side(void){ motor_forward(); set_until_ms(DRIVE_MS); }
 static inline void do_turnback_90(Side s){
-    if (s==SIDE_LEFT)  do_right_90();
-    else               do_left_90();
+    /* Add a small bias so we finish truly facing forward again */
+    int back_deg = 90 + TURNBACK_BIAS_DEG;
+    if (s==SIDE_LEFT)  turn_right_deg(back_deg);
+    else               turn_left_deg(back_deg);
 }
 static inline void do_pause_check(void){ motor_stop(); set_until_ms(CHECK_PAUSE_MS); }
 static inline void do_forward_clear(void){ motor_forward(); set_until_ms(FORWARD_CLEAR_MS); }
@@ -117,6 +135,7 @@ static inline void start_avoid(Side first){
     do_stop1();
 }
 
+/* main FSM step */
 static void avoidor_tick(void){
     switch (A.st){
     case AV_TURN_90:
@@ -150,8 +169,10 @@ static void avoidor_tick(void){
                A.side==SIDE_LEFT?"LEFT":"RIGHT", (unsigned)A.side_steps, (unsigned long)d);
 
         if (d == 0 || d <= STOP_CM) {
+            /* still blocked → repeat same side-step */
             A.side_steps++;
             if (A.side_steps >= MAX_SIDE_STEPS) {
+                /* safety: if we've slid too many times, flip side once */
                 A.side = (A.side==SIDE_LEFT)?SIDE_RIGHT:SIDE_LEFT;
                 A.side_steps = 0;
             }
@@ -159,9 +180,11 @@ static void avoidor_tick(void){
             do_stop1();
         }
         else if (d < CLEAR_CM) {
+            /* marginal: take another settled check */
             do_pause_check();
         }
         else {
+            /* clear: go forward, then hand back to manual */
             A.st = AV_GO_FORWARD;
             do_forward_clear();
         }
@@ -189,7 +212,7 @@ void ultra_obstacle_aware_apply(DriveCmd desired) {
         bool wants_forward = (desired == CMD_FORWARD || desired == CMD_FWD_LEFT || desired == CMD_FWD_RIGHT);
         if (wants_forward && (d == 0 || d <= STOP_CM)) {
             printf("Obstacle at %lucm → side-step until clear\n", (unsigned long)d);
-            start_avoid(SIDE_LEFT);
+            start_avoid(SIDE_LEFT);   // start left; continues sliding on that side
             return;
         }
         ultra_apply_direct(desired);
