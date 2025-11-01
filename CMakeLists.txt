@@ -14,6 +14,7 @@ add_executable(Recon-Rover
     main.c
     drivers/motor.c
     drivers/encoder.c
+    drivers/ultrasonic.c 
 )
 
 # --- MODIFICATION 2 ---
