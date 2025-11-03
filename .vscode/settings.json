@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "i2c.h": "c",
+        "stdlib.h": "c",
+        "imu.h": "c"
+    }
+}

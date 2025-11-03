@@ -11,7 +11,8 @@
 // --- DRIVER INCLUDES ---
 #include "drivers/motor.h"
 #include "drivers/encoder.h"
-#include "drivers/ultrasonic.h"   
+#include "drivers/ultrasonic.h"
+#include "drivers/imu.h" // <-- 1. ADDED THIS
 
 // ========== APPLICATION SETTINGS ==========
 #define WIFI_SSID "Diva iPhone"
@@ -107,7 +108,9 @@ int main(void) {
     printf("Motor controller initialized.\n");
 
     encoder_init();
-    ultra_init();        
+    ultra_init();
+    imu_init(); // <-- 2. ADDED THIS
+    printf("All drivers initialized.\n");
 
     // --- 4. UDP Server Init ---
     udp_server = udp_new();
@@ -132,6 +135,8 @@ int main(void) {
         // - If obstacle ahead (forward-ish intent): auto avoid, then hand back
         ultra_obstacle_aware_apply(g_desired_cmd);
 
-        tight_loop_contents();
+        // This function MUST be called in the loop to allow
+        // the network stack to process packets.
+        cyw43_arch_poll(); // <-- 3. CHANGED THIS
     }
 }

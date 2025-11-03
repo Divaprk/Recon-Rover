@@ -15,6 +15,7 @@ add_executable(Recon-Rover
     drivers/motor.c
     drivers/encoder.c
     drivers/ultrasonic.c 
+    drivers/imu.c
 )
 
 # --- MODIFICATION 2 ---
@@ -32,6 +33,7 @@ target_link_libraries(Recon-Rover
     hardware_gpio
     pico_lwip
     pico_cyw43_arch_lwip_threadsafe_background
+    hardware_i2c
 )
 
 # --- Stdio / Float / UF2 (No changes here) ---

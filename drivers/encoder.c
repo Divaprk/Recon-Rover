@@ -22,7 +22,7 @@
 
 #define SENSOR_PIN_LEFT   28      
 
-#define SENSOR_PIN_RIGHT  4      
+#define SENSOR_PIN_RIGHT  2      
 
 #define PRINT_MS          500    
 
