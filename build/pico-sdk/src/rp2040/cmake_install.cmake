@@ -34,13 +34,13 @@ endif()
 
 # Set default install directory permissions.
 if(NOT DEFINED CMAKE_OBJDUMP)
-  set(CMAKE_OBJDUMP "C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.2 rel1/bin/arm-none-eabi-objdump.exe")
+  set(CMAKE_OBJDUMP "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/gcc-arm-none-eabi/bin/arm-none-eabi-objdump.exe")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/pico-sdk/src/rp2040/hardware_regs/cmake_install.cmake")
-  include("C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/pico-sdk/src/rp2040/hardware_structs/cmake_install.cmake")
+  include("C:/Users/moozh/Documents/UNI/Year 2/Trimester 1/INF2004 - Embedded Systems Programming/Project/Recon-Rover/build/pico-sdk/src/rp2040/hardware_regs/cmake_install.cmake")
+  include("C:/Users/moozh/Documents/UNI/Year 2/Trimester 1/INF2004 - Embedded Systems Programming/Project/Recon-Rover/build/pico-sdk/src/rp2040/hardware_structs/cmake_install.cmake")
 
 endif()
 

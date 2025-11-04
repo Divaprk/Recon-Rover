@@ -1,4 +1,4 @@
-// Padded and checksummed version of: C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/pico-sdk/src/rp2_common/boot_stage2/bs2_default.bin
+// Padded and checksummed version of: C:/Users/moozh/Documents/UNI/Year 2/Trimester 1/INF2004 - Embedded Systems Programming/Project/Recon-Rover/build/pico-sdk/src/rp2_common/boot_stage2/bs2_default.bin
 
 .cpu cortex-m0plus
 .thumb

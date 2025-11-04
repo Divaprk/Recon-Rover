@@ -6,15 +6,15 @@
 
 /* ---------- Clear/Stop thresholds ---------- */
 #define STOP_CM           30     
-#define CLEAR_CM          40    
+#define CLEAR_CM          31    
 
 /* ---------- Ultrasonic timing ---------- */
 #define TIMEOUT_ECHO_US   26000
 #define SAMPLE_COUNT      5
 
 /* ---------- Turning/drive calibration ---------- */
-#define PIVOT_MS_90_LEFT   250   // ms that gives ~90° when pivoting LEFT
-#define PIVOT_MS_90_RIGHT  235   // ms that gives ~90° when pivoting RIGHT
+#define PIVOT_MS_90_LEFT   330   // ms that gives ~90° when pivoting LEFT
+#define PIVOT_MS_90_RIGHT  550  // ms that gives ~90° when pivoting RIGHT
 #define TURNBACK_BIAS_DEG    5   // extra degrees on the turn-back to re-center (compensate drift)
 #define DRIVE_MS            500  // how far to slide per side step (increase if want bigger sidestep)
 #define CHECK_PAUSE_MS      120  // settle before reading
