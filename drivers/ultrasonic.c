@@ -5,21 +5,20 @@
 #include "motor.h"
 
 /* ---------- Clear/Stop thresholds ---------- */
-#define STOP_CM           30     
-#define CLEAR_CM          31    
+#define STOP_CM           30
+#define CLEAR_CM          31
 
 /* ---------- Ultrasonic timing ---------- */
 #define TIMEOUT_ECHO_US   26000
 #define SAMPLE_COUNT      5
 
 /* ---------- Turning/drive calibration ---------- */
-#define PIVOT_MS_90_LEFT   330   // ms that gives ~90° when pivoting LEFT
-#define PIVOT_MS_90_RIGHT  550  // ms that gives ~90° when pivoting RIGHT
-#define TURNBACK_BIAS_DEG    5   // extra degrees on the turn-back to re-center (compensate drift)
-#define DRIVE_MS            500  // how far to slide per side step (increase if want bigger sidestep)
-#define CHECK_PAUSE_MS      120  // settle before reading
-#define FORWARD_CLEAR_MS    650  // forward time once clear
-#define MAX_SIDE_STEPS       20  // safety cap
+#define PIVOT_MS_90_LEFT   335   // ms that gives ~90° when pivoting LEFT
+#define PIVOT_MS_90_RIGHT  540   // ms that gives ~90° when pivoting RIGHT
+#define DRIVE_MS           500   // how far to slide per side step
+#define CHECK_PAUSE_MS     120   // settle before reading
+#define FORWARD_CLEAR_MS   650   // forward time once clear
+#define MAX_SIDE_STEPS     20    // safety cap
 
 /* ---------- helpers to convert degrees -> ms per side ---------- */
 static inline int ms_for_deg_left(int deg)  { return (deg * PIVOT_MS_90_LEFT)  / 90; }
@@ -118,10 +117,9 @@ static inline void do_left_90(void){  turn_left_deg(90); }
 static inline void do_right_90(void){ turn_right_deg(90); }
 static inline void do_drive_side(void){ motor_forward(); set_until_ms(DRIVE_MS); }
 static inline void do_turnback_90(Side s){
-    /* Add a small bias so we finish truly facing forward again */
-    int back_deg = 90 + TURNBACK_BIAS_DEG;
-    if (s==SIDE_LEFT)  turn_right_deg(back_deg);
-    else               turn_left_deg(back_deg);
+    /* exact 90° back (no bias) */
+    if (s==SIDE_LEFT)  turn_right_deg(90);
+    else               turn_left_deg(90);
 }
 static inline void do_pause_check(void){ motor_stop(); set_until_ms(CHECK_PAUSE_MS); }
 static inline void do_forward_clear(void){ motor_forward(); set_until_ms(FORWARD_CLEAR_MS); }
