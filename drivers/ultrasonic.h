@@ -5,8 +5,8 @@
 #include <stdbool.h>
 
 // ===== Configure your sensor pins here =====
-#define ULTRA_TRIG_PIN 2
-#define ULTRA_ECHO_PIN 3
+#define ULTRA_TRIG_PIN 16
+#define ULTRA_ECHO_PIN 17
 
 // ===== Drive command type (maps to your motor.h functions) =====
 typedef enum {

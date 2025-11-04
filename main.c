@@ -12,7 +12,7 @@
 #include "drivers/motor.h"
 #include "drivers/encoder.h"
 #include "drivers/ultrasonic.h"
-#include "drivers/imu.h" // <-- 1. ADDED THIS
+
 
 // ========== APPLICATION SETTINGS ==========
 #define WIFI_SSID "Diva iPhone"
@@ -109,7 +109,7 @@ int main(void) {
 
     encoder_init();
     ultra_init();
-    imu_init(); // <-- 2. ADDED THIS
+    //imu_init(); // <-- 2. ADDED THIS
     printf("All drivers initialized.\n");
 
     // --- 4. UDP Server Init ---
@@ -130,13 +130,13 @@ int main(void) {
     // --- 5. Main Loop ---
     printf("Initialization complete. Entering main loop.\n\n");
     while (true) {
-        // Decide what actually goes to the motors:
-        // - If path is clear: pass-through g_desired_cmd
-        // - If obstacle ahead (forward-ish intent): auto avoid, then hand back
+        // 1. Decide what command actually goes to the motors
         ultra_obstacle_aware_apply(g_desired_cmd);
 
-        // This function MUST be called in the loop to allow
-        // the network stack to process packets.
-        cyw43_arch_poll(); // <-- 3. CHANGED THIS
+        // 2. Service the USB stack (for printf) and other background tasks.
+        // This is the correct function to call when using
+        // the threadsafe_background Wi-Fi library.
+        tight_loop_contents();
     }
+    
 }
