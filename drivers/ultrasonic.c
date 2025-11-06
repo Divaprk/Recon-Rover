@@ -2,7 +2,7 @@
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 #include <stdio.h>
-#include <stdbool.h>            // <-- added
+#include <stdbool.h>
 #include "motor.h"
 
 /* ---------- Clear/Stop thresholds ---------- */
@@ -14,15 +14,16 @@
 #define SAMPLE_COUNT      5
 
 /* ---------- Turning/drive calibration ---------- */
-#define PIVOT_MS_90_LEFT   335   // ms that gives ~90° when pivoting LEFT
+#define PIVOT_MS_90_LEFT   317   // ms that gives ~90° when pivoting LEFT
 #define PIVOT_MS_90_RIGHT  540   // ms that gives ~90° when pivoting RIGHT
 #define DRIVE_MS           500   // how far to slide per side step
 #define CHECK_PAUSE_MS     120   // settle before reading
 #define FORWARD_CLEAR_MS   650   // forward time once clear
 #define MAX_SIDE_STEPS     20    // safety cap
 
-/* ---------- New: forward dash to get ~50 cm past the obstacle ---------- */
-#define GO_AROUND_MS       1200  // <-- tune this to ≈50 cm for your speed
+/* ---------- New: distances by time ---------- */
+#define GO_AROUND_MS       1200  // ~50 cm forward after first clear (tune)
+#define OFFSET_10CM_MS      400  // ~10 cm nudge left (tune)
 
 /* ---------- helpers to convert degrees -> ms per side ---------- */
 static inline int ms_for_deg_left(int deg)  { return (deg * PIVOT_MS_90_LEFT)  / 90; }
@@ -60,7 +61,7 @@ uint32_t ultra_read_cm(void) {
     for (int i=0;i<SAMPLE_COUNT;i++){
         uint32_t us = pulse_us();
         v[i] = us ? (us/58) : 0;
-        sleep_ms(8);
+        sleep_ms(20);
     }
     uint32_t m = median5(v);
     if (m == 0) {                  // retry once if timeout/no echo
@@ -97,9 +98,14 @@ typedef enum {
     AV_DECIDE,
     AV_GO_FORWARD,
 
-    /* --- New states for second pass --- */
+    /* Existing second pass */
     AV_GO_AROUND_LONG,     // drive forward ~50 cm after first clear
-    AV_TURN_OTHER_SIDE     // then turn right 90° to start scanning the other side
+    AV_TURN_OTHER_SIDE,    // then turn right 90° and start flank scanning
+
+    /* New: extra offset before second pass */
+    AV_OFFSET_LEFT,        // turn left 90°
+    AV_OFFSET_DRIVE_SHORT, // drive ~10 cm
+    AV_OFFSET_TURNBACK     // turn right 90° (face forward again)
 } AvState;
 
 typedef enum { SIDE_LEFT=0, SIDE_RIGHT=1 } Side;
@@ -110,7 +116,8 @@ typedef struct {
     Side side;
     uint8_t side_steps;
     absolute_time_t until;
-    bool second_pass_pending;   // <-- New: run the “other side” scan once
+    bool second_pass_pending;   // run the “other side” once after first clear
+    bool right_flank_scan;      // scanning while facing right flank
 } Avoidor;
 
 static Avoidor A = {0};
@@ -132,7 +139,8 @@ static inline void do_turnback_90(Side s){
 }
 static inline void do_pause_check(void){ motor_stop(); set_until_ms(CHECK_PAUSE_MS); }
 static inline void do_forward_clear(void){ motor_forward(); set_until_ms(FORWARD_CLEAR_MS); }
-static inline void do_forward_long(void){ motor_forward(); set_until_ms(GO_AROUND_MS); } // <-- New
+static inline void do_forward_long(void){ motor_forward(); set_until_ms(GO_AROUND_MS); }
+static inline void do_forward_short(void){ motor_forward(); set_until_ms(OFFSET_10CM_MS); }
 static inline void do_stop1(void){ motor_stop(); set_until_ms(1); }
 
 static inline void start_avoid(Side first){
@@ -140,7 +148,8 @@ static inline void start_avoid(Side first){
     A.st = AV_TURN_90;
     A.side = first;
     A.side_steps = 0;
-    A.second_pass_pending = true;     // <-- New: after first clear, run second pass
+    A.second_pass_pending = true;     // after first clear, go-around+other-side scan
+    A.right_flank_scan = false;
     do_stop1();
 }
 
@@ -149,7 +158,12 @@ static void avoidor_tick(void){
     switch (A.st){
     case AV_TURN_90:
         if (!due()) break;
-        if (A.side==SIDE_LEFT) do_left_90(); else do_right_90();
+        if (A.right_flank_scan) {
+            /* In right-flank mode: start micro-cycle with LEFT 90° */
+            turn_left_deg(90);
+        } else {
+            if (A.side==SIDE_LEFT) do_left_90(); else do_right_90();
+        }
         A.st = AV_DRIVE_SIDE;
         break;
 
@@ -161,7 +175,12 @@ static void avoidor_tick(void){
 
     case AV_TURN_BACK_90:
         if (!due()) break;
-        do_turnback_90(A.side);
+        if (A.right_flank_scan) {
+            /* Complete micro-cycle: return to facing RIGHT */
+            turn_right_deg(90);
+        } else {
+            do_turnback_90(A.side);
+        }
         A.st = AV_PAUSE_CHECK;
         break;
 
@@ -174,50 +193,81 @@ static void avoidor_tick(void){
     case AV_DECIDE: {
         if (!due()) break;
         uint32_t d = ultra_read_cm();
-        printf("[avoid] side=%s step=%u dist=%lucm\n",
-               A.side==SIDE_LEFT?"LEFT":"RIGHT", (unsigned)A.side_steps, (unsigned long)d);
+        printf("[avoid] mode=%s side=%s step=%u dist=%lucm\n",
+               A.right_flank_scan ? "RIGHT_FLANK" : "LEFT_PASS",
+               A.side==SIDE_LEFT?"LEFT":"RIGHT",
+               (unsigned)A.side_steps, (unsigned long)d);
 
         if (d == 0 || d <= STOP_CM) {
-            /* still blocked → repeat same side-step */
+            /* still blocked → repeat */
             A.side_steps++;
             if (A.side_steps >= MAX_SIDE_STEPS) {
-                /* safety: if we've slid too many times, flip side once */
+                /* optional safety flip */
                 A.side = (A.side==SIDE_LEFT)?SIDE_RIGHT:SIDE_LEFT;
                 A.side_steps = 0;
             }
-            A.st = AV_TURN_90;
+            A.st = AV_TURN_90;     // kick off next micro-cycle
             do_stop1();
         }
         else if (d < CLEAR_CM) {
-            /* marginal: take another settled check */
+            /* marginal → settle and recheck */
             do_pause_check();
         }
         else {
-            /* clear: either begin the other-side scan, or finish as before */
+            /* clear */
             if (A.second_pass_pending) {
-                A.st = AV_GO_AROUND_LONG;
-                do_forward_long();          // drive ~50 cm straight
-            } else {
+                /* NEW: before the 50cm go-around, do a left 90 + 10cm + right 90 */
+                A.st = AV_OFFSET_LEFT;
+                do_left_90();                 // step (1): turn left again
+            } else if (A.right_flank_scan) {
+                /* finished scanning other side → short push then return to manual */
+                A.right_flank_scan = false;
                 A.st = AV_GO_FORWARD;
-                do_forward_clear();         // short push then hand back to manual
+                do_forward_clear();           // change to immediate handoff if preferred
+            } else {
+                /* normal behavior */
+                A.st = AV_GO_FORWARD;
+                do_forward_clear();
             }
         }
     } break;
 
+    /* --- NEW offset mini-sequence: left 90 → ~10cm → right 90 --- */
+    case AV_OFFSET_LEFT:
+        if (!due()) break;
+        A.st = AV_OFFSET_DRIVE_SHORT;
+        do_forward_short();                   // step (2): move ~10 cm
+        break;
+
+    case AV_OFFSET_DRIVE_SHORT:
+        if (!due()) break;
+        A.st = AV_OFFSET_TURNBACK;
+        turn_right_deg(90);                   // step (3): face forward again
+        break;
+
+    case AV_OFFSET_TURNBACK:
+        if (!due()) break;
+        /* continue with the existing second part: ~50 cm forward, then turn right and scan */
+        A.st = AV_GO_AROUND_LONG;
+        do_forward_long();
+        break;
+
+    /* --- existing second pass --- */
     case AV_GO_AROUND_LONG:
         if (!due()) break;
         motor_stop();
-        A.st = AV_TURN_OTHER_SIDE;          // now face right to start second flank scan
+        A.st = AV_TURN_OTHER_SIDE;
         do_stop1();
         break;
 
     case AV_TURN_OTHER_SIDE:
         if (!due()) break;
-        do_right_90();                       // face right 90°
-        A.side = SIDE_RIGHT;                 // subsequent side-steps will be on the right
+        do_right_90();                  // face right
+        A.side = SIDE_RIGHT;
         A.side_steps = 0;
-        A.second_pass_pending = false;       // we’re now in the second pass
-        A.st = AV_DRIVE_SIDE;                // reuse the same cycle: DRIVE -> TURN_BACK -> PAUSE -> DECIDE
+        A.second_pass_pending = false;  // entering second pass now
+        A.right_flank_scan = true;      // enable flank micro-cycles
+        A.st = AV_PAUSE_CHECK;          // check first while facing right
         break;
 
     case AV_GO_FORWARD:
@@ -242,7 +292,7 @@ void ultra_obstacle_aware_apply(DriveCmd desired) {
         bool wants_forward = (desired == CMD_FORWARD || desired == CMD_FWD_LEFT || desired == CMD_FWD_RIGHT);
         if (wants_forward && (d == 0 || d <= STOP_CM)) {
             printf("Obstacle at %lucm → side-step until clear\n", (unsigned long)d);
-            start_avoid(SIDE_LEFT);   // start left; after first clear we’ll go around and check right side
+            start_avoid(SIDE_LEFT);   // start left; then offset+go-around+right-flank scan
             return;
         }
         ultra_apply_direct(desired);
