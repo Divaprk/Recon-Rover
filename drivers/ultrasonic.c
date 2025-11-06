@@ -2,6 +2,7 @@
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 #include <stdio.h>
+#include <stdbool.h>            // <-- added
 #include "motor.h"
 
 /* ---------- Clear/Stop thresholds ---------- */
@@ -19,6 +20,9 @@
 #define CHECK_PAUSE_MS     120   // settle before reading
 #define FORWARD_CLEAR_MS   650   // forward time once clear
 #define MAX_SIDE_STEPS     20    // safety cap
+
+/* ---------- New: forward dash to get ~50 cm past the obstacle ---------- */
+#define GO_AROUND_MS       1200  // <-- tune this to ≈50 cm for your speed
 
 /* ---------- helpers to convert degrees -> ms per side ---------- */
 static inline int ms_for_deg_left(int deg)  { return (deg * PIVOT_MS_90_LEFT)  / 90; }
@@ -91,7 +95,11 @@ typedef enum {
     AV_TURN_BACK_90,
     AV_PAUSE_CHECK,
     AV_DECIDE,
-    AV_GO_FORWARD
+    AV_GO_FORWARD,
+
+    /* --- New states for second pass --- */
+    AV_GO_AROUND_LONG,     // drive forward ~50 cm after first clear
+    AV_TURN_OTHER_SIDE     // then turn right 90° to start scanning the other side
 } AvState;
 
 typedef enum { SIDE_LEFT=0, SIDE_RIGHT=1 } Side;
@@ -102,6 +110,7 @@ typedef struct {
     Side side;
     uint8_t side_steps;
     absolute_time_t until;
+    bool second_pass_pending;   // <-- New: run the “other side” scan once
 } Avoidor;
 
 static Avoidor A = {0};
@@ -123,6 +132,7 @@ static inline void do_turnback_90(Side s){
 }
 static inline void do_pause_check(void){ motor_stop(); set_until_ms(CHECK_PAUSE_MS); }
 static inline void do_forward_clear(void){ motor_forward(); set_until_ms(FORWARD_CLEAR_MS); }
+static inline void do_forward_long(void){ motor_forward(); set_until_ms(GO_AROUND_MS); } // <-- New
 static inline void do_stop1(void){ motor_stop(); set_until_ms(1); }
 
 static inline void start_avoid(Side first){
@@ -130,6 +140,7 @@ static inline void start_avoid(Side first){
     A.st = AV_TURN_90;
     A.side = first;
     A.side_steps = 0;
+    A.second_pass_pending = true;     // <-- New: after first clear, run second pass
     do_stop1();
 }
 
@@ -182,11 +193,32 @@ static void avoidor_tick(void){
             do_pause_check();
         }
         else {
-            /* clear: go forward, then hand back to manual */
-            A.st = AV_GO_FORWARD;
-            do_forward_clear();
+            /* clear: either begin the other-side scan, or finish as before */
+            if (A.second_pass_pending) {
+                A.st = AV_GO_AROUND_LONG;
+                do_forward_long();          // drive ~50 cm straight
+            } else {
+                A.st = AV_GO_FORWARD;
+                do_forward_clear();         // short push then hand back to manual
+            }
         }
     } break;
+
+    case AV_GO_AROUND_LONG:
+        if (!due()) break;
+        motor_stop();
+        A.st = AV_TURN_OTHER_SIDE;          // now face right to start second flank scan
+        do_stop1();
+        break;
+
+    case AV_TURN_OTHER_SIDE:
+        if (!due()) break;
+        do_right_90();                       // face right 90°
+        A.side = SIDE_RIGHT;                 // subsequent side-steps will be on the right
+        A.side_steps = 0;
+        A.second_pass_pending = false;       // we’re now in the second pass
+        A.st = AV_DRIVE_SIDE;                // reuse the same cycle: DRIVE -> TURN_BACK -> PAUSE -> DECIDE
+        break;
 
     case AV_GO_FORWARD:
         if (!due()) break;
@@ -210,7 +242,7 @@ void ultra_obstacle_aware_apply(DriveCmd desired) {
         bool wants_forward = (desired == CMD_FORWARD || desired == CMD_FWD_LEFT || desired == CMD_FWD_RIGHT);
         if (wants_forward && (d == 0 || d <= STOP_CM)) {
             printf("Obstacle at %lucm → side-step until clear\n", (unsigned long)d);
-            start_avoid(SIDE_LEFT);   // start left; continues sliding on that side
+            start_avoid(SIDE_LEFT);   // start left; after first clear we’ll go around and check right side
             return;
         }
         ultra_apply_direct(desired);
