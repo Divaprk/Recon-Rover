@@ -12,7 +12,7 @@
 #include "drivers/motor.h"
 #include "drivers/encoder.h"
 #include "drivers/ultrasonic.h"
-
+#include "drivers/imu.h"  // <-- ADDED
 
 // ========== APPLICATION SETTINGS ==========
 #define WIFI_SSID "Diva iPhone"
@@ -26,6 +26,14 @@ static struct udp_pcb *udp_server = NULL;
 // This is the ONLY command that should be consumed by the motor layer.
 // Ultrasonic will either forward it or temporarily override to avoid obstacles.
 static volatile DriveCmd g_desired_cmd = CMD_STOP;
+
+// --- Global variable to share sensor data with other modules ---
+volatile uint32_t g_current_distance_cm = 0;
+
+// --- ADDED: Global variables for IMU data ---
+volatile float g_current_heading = 0.0f;
+volatile float g_current_tilt_x = 0.0f;
+volatile float g_current_tilt_y = 0.0f;
 
 // ==========================================================
 //               TELEOP UDP FUNCTIONS
@@ -109,7 +117,7 @@ int main(void) {
 
     encoder_init();
     ultra_init();
-    //imu_init(); // <-- 2. ADDED THIS
+    imu_init();  // <-- ADDED
     printf("All drivers initialized.\n");
 
     // --- 4. UDP Server Init ---
@@ -129,14 +137,23 @@ int main(void) {
 
     // --- 5. Main Loop ---
     printf("Initialization complete. Entering main loop.\n\n");
+    
+    // ADDED: Variables for IMU data
+    imu_vector_t accel, mag;
+    
     while (true) {
-        // 1. Decide what command actually goes to the motors
+        // 1. Ultrasonic obstacle avoidance and motor control
         ultra_obstacle_aware_apply(g_desired_cmd);
+        g_current_distance_cm = ultra_read_cm();
 
-        // 2. Service the USB stack (for printf) and other background tasks.
-        // This is the correct function to call when using
-        // the threadsafe_background Wi-Fi library.
+        // 2. ADDED: Read IMU data
+        imu_read_accel(&accel);
+        imu_read_mag(&mag);
+        g_current_heading = imu_calculate_heading(&mag);
+        g_current_tilt_x = imu_calculate_tilt_x(&accel);
+        g_current_tilt_y = imu_calculate_tilt_y(&accel);
+
+        // 3. Service the background tasks
         tight_loop_contents();
     }
-    
 }

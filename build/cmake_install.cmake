@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/moozh/Documents/UNI/Year 2/Trimester 1/INF2004 - Embedded Systems Programming/Project/Recon-Rover
+# Install script for directory: C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -34,12 +34,12 @@ endif()
 
 # Set default install directory permissions.
 if(NOT DEFINED CMAKE_OBJDUMP)
-  set(CMAKE_OBJDUMP "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/gcc-arm-none-eabi/bin/arm-none-eabi-objdump.exe")
+  set(CMAKE_OBJDUMP "C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/14.2 rel1/bin/arm-none-eabi-objdump.exe")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
-  include("C:/Users/moozh/Documents/UNI/Year 2/Trimester 1/INF2004 - Embedded Systems Programming/Project/Recon-Rover/build/pico-sdk/cmake_install.cmake")
+  include("C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/pico-sdk/cmake_install.cmake")
 
 endif()
 
@@ -51,5 +51,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "C:/Users/moozh/Documents/UNI/Year 2/Trimester 1/INF2004 - Embedded Systems Programming/Project/Recon-Rover/build/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "C:/Users/divak/OneDrive - Singapore Institute Of Technology/INF2004 - Embedded Systems Programming/Recon-Rover/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

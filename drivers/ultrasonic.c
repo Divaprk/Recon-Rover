@@ -287,16 +287,17 @@ static void avoidor_tick(void){
 
 void ultra_obstacle_aware_apply(DriveCmd desired) {
     uint32_t d = ultra_read_cm();
-
+    
     if (A.mode == MODE_MANUAL) {
         bool wants_forward = (desired == CMD_FORWARD || desired == CMD_FWD_LEFT || desired == CMD_FWD_RIGHT);
         if (wants_forward && (d == 0 || d <= STOP_CM)) {
             printf("Obstacle at %lucm → side-step until clear\n", (unsigned long)d);
-            start_avoid(SIDE_LEFT);   // start left; then offset+go-around+right-flank scan
-            return;
+            start_avoid(SIDE_LEFT);
+            return;  // <-- This is the problem!
         }
         ultra_apply_direct(desired);
     } else {
         avoidor_tick();
     }
+    // It never returns d!
 }
