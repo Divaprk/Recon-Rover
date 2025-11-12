@@ -11,7 +11,7 @@
 #define SENSOR_PIN_RIGHT  2      
 #define PRINT_MS          500    
 #define COUNTS_PER_REV    80      
-#define WHEEL_CIRCUM_MM   58.94f  
+#define WHEEL_CIRCUM_MM   (58.94f  * 1.20588f)
 
 // ========== GLOBAL VARIABLES (ENCODER) ==========
 static volatile uint32_t tick_count_left = 0;
@@ -86,7 +86,6 @@ static bool print_cb(repeating_timer_t *t) {
            (unsigned long)ticks_r, rpm_r, mm_per_s_r, distance_mm_total_right);
     printf("---\n");
 
-    // --- 4. Send Report over UDP ---
     if (telemetry_target_set) {
         static char telemetry_buf[384];
         int len = snprintf(telemetry_buf, sizeof(telemetry_buf),
