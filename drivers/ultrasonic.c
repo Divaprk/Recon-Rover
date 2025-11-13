@@ -5,31 +5,13 @@
 #include <stdbool.h>
 #include <math.h>
 #include "motor.h"
-<<<<<<< Updated upstream
-#include "imu.h"  // IMU-based turns
-=======
 #include "imu.h"
->>>>>>> Stashed changes
 
 /* ========== THRESHOLDS ========== */
 #define OBSTACLE_DETECT_CM  30
 #define OBSTACLE_CLEAR_CM   30
 
 /* ========== MOVEMENT CALIBRATION ========== */
-<<<<<<< Updated upstream
-#define DRIVE_20CM_MS       600     // Time to drive 20cm forward
-#define DRIVE_70CM_MS       2500    // Time to drive 70cm forward
-#define PAUSE_MS            200     // Pause between actions
-
-/* ========== IMU TURN SETTINGS ========== */
-#define TURN_TARGET_DEG     90.0f   // Target turn angle
-#define TURN_TOLERANCE_DEG  2.0f    // ±2° tolerance (slightly looser to prevent oscillation)
-#define TURN_TIMEOUT_MS     15000   // Max time for a turn (safety) 
-#define TURN_BURST_MS       45      // Short burst when far from target
-#define TURN_BURST_FINE_MS  25      // Even shorter burst when close to target
-#define TURN_SETTLE_MS      250     // Settle time after each burst to read IMU
-#define TURN_FINE_THRESHOLD 15.0f   // Switch to fine control when within 15° of target
-=======
 #define DRIVE_20CM_MS       400
 #define DRIVE_70CM_MS       2500
 #define PAUSE_MS            200
@@ -47,7 +29,6 @@
 #define TURN_ERROR_HIGH     30.0f
 #define TURN_ERROR_MED      15.0f
 #define TURN_ERROR_LOW      5.0f
->>>>>>> Stashed changes
 
 /* ========== SAFETY LIMITS ========== */
 #define MAX_SIDESTEP_CM     200
@@ -144,26 +125,6 @@ typedef enum {
 
 typedef enum {
     AV_IDLE = 0,
-<<<<<<< Updated upstream
-    AV_P1_TURN_LEFT,
-    AV_P1_TURN_LEFT_WAIT,
-    AV_P1_DRIVE_20CM,
-    AV_P1_TURN_RIGHT,
-    AV_P1_TURN_RIGHT_WAIT,
-    AV_P1_CHECK_CLEAR,
-
-    // Phase 2: Final left clearance
-    AV_P2_TURN_LEFT,
-    AV_P2_TURN_LEFT_WAIT,
-    AV_P2_DRIVE_20CM,
-    AV_P2_TURN_RIGHT,
-    AV_P2_TURN_RIGHT_WAIT,
-
-    // Phase 3: Pass alongside object
-    AV_P3_DRIVE_70CM,
-
-    // Done
-=======
     
     // Step 1: Stop and turn left 90°
     AV_TURN_LEFT,
@@ -181,7 +142,6 @@ typedef enum {
     AV_TURN_RIGHT_STEP4,
     AV_DRIVE_FORWARD_FINAL,
     
->>>>>>> Stashed changes
     AV_COMPLETE
 } AvoidState;
 
@@ -318,7 +278,6 @@ static inline bool turn_complete(bool turn_right) {
 
 /* ========== MOVEMENT HELPERS ========== */
 
->>>>>>> Stashed changes
 static inline void do_drive_20cm(void) {
     motor_forward();
     set_timer_ms(DRIVE_20CM_MS);
@@ -329,15 +288,6 @@ static inline void do_drive_70cm(void) {
     set_timer_ms(DRIVE_70CM_MS);
 }
 
-<<<<<<< Updated upstream
-static inline void do_drive_x_cm(uint32_t x_cm) {
-    motor_forward();
-    uint32_t time_ms = (x_cm * DRIVE_20CM_MS) / 20; // linear map
-    set_timer_ms(time_ms);
-}
-
-=======
->>>>>>> Stashed changes
 static inline void do_pause(void) {
     motor_stop();
     set_timer_ms(PAUSE_MS);
@@ -351,180 +301,37 @@ static inline void start_avoidance(void) {
     set_timer_ms(PAUSE_MS);  // Changed from do_pause() to explicit timer
 }
 
-/* ========== IMU TURN HELPERS ========== */
-
-// Normalize angle to 0-360 range
-static inline float normalize_angle(float angle) {
-    while (angle < 0.0f) angle += 360.0f;
-    while (angle >= 360.0f) angle -= 360.0f;
-    return angle;
-}
-
-// Start a left turn (counterclockwise = subtract 90°)
-static inline void start_turn_left_90(void) {
-    imu_vector_t mag;
-    imu_read_mag(&mag);
-    A.turn_start_heading = imu_calculate_heading(&mag);
-    A.turn_target_heading = normalize_angle(A.turn_start_heading - TURN_TARGET_DEG);
-    A.turn_timeout = delayed_by_ms(get_absolute_time(), TURN_TIMEOUT_MS);
-
-    motor_left();
-    A.turning_active = true;
-    set_timer_ms(TURN_BURST_MS);
-
-    printf("  IMU Turn Left: Start=%.1f° Target=%.1f°\n",
-           A.turn_start_heading, A.turn_target_heading);
-}
-
-// Start a right turn (clockwise = add 90°)
-static inline void start_turn_right_90(void) {
-    imu_vector_t mag;
-    imu_read_mag(&mag);
-    A.turn_start_heading = imu_calculate_heading(&mag);
-    A.turn_target_heading = normalize_angle(A.turn_start_heading + TURN_TARGET_DEG);
-    A.turn_timeout = delayed_by_ms(get_absolute_time(), TURN_TIMEOUT_MS);
-
-    motor_right();
-    A.turning_active = true;
-    set_timer_ms(TURN_BURST_MS);
-
-    printf("  IMU Turn Right: Start=%.1f° Target=%.1f°\n",
-           A.turn_start_heading, A.turn_target_heading);
-}
-
-// Check if turn is complete (incremental turning with pauses and overshoot correction)
-static inline bool turn_complete(void) {
-    // Safety timeout
-    if (absolute_time_diff_us(get_absolute_time(), A.turn_timeout) <= 0) {
-        printf("  [WARNING] Turn timeout! Stopping.\n");
-        motor_stop();
-        return true;
-    }
-
-    // If timer hasn't expired, we're either turning or settling
-    if (!timer_expired()) return false;
-
-    // If we just finished a turning burst, stop & settle
-    if (A.turning_active) {
-        motor_stop();
-        A.turning_active = false;
-        set_timer_ms(TURN_SETTLE_MS);
-        return false;
-    }
-
-    // Settled: read IMU and decide next action
-    imu_vector_t mag;
-    imu_read_mag(&mag);
-    float current_heading = imu_calculate_heading(&mag);
-
-    float diff = A.turn_target_heading - current_heading;
-    while (diff > 180.0f) diff -= 360.0f;
-    while (diff < -180.0f) diff += 360.0f;
-
-    float error = fabsf(diff);
-    bool need_turn_left  = (diff < 0.0f);
-    bool need_turn_right = (diff > 0.0f);
-
-    printf("  Current=%.1f° Target=%.1f° Error=%.1f° | ",
-           current_heading, A.turn_target_heading, error);
-
-    if (error <= TURN_TOLERANCE_DEG) {
-        printf("DONE!\n");
-        motor_stop();
-        return true;  // Turn complete!
-    }
-
-    int burst_time = (error < TURN_FINE_THRESHOLD) ? TURN_BURST_FINE_MS : TURN_BURST_MS;
-    if (need_turn_left) {
-        printf("turning LEFT (%dms)...\n", burst_time);
-        motor_left();
-    } else if (need_turn_right) {
-        printf("turning RIGHT (%dms)...\n", burst_time);
-        motor_right();
-    }
-
-    A.turning_active = true;
-    set_timer_ms(burst_time);
-    return false;
-}
-
 /* ========== STATE MACHINE TICK ========== */
 
 static void avoider_tick(void) {
-<<<<<<< Updated upstream
-    if (!timer_expired()) return;  // Wait for current action to finish
-
-=======
->>>>>>> Stashed changes
     uint32_t dist;
 
     switch (A.state) {
-<<<<<<< Updated upstream
-
-    /* ===== PHASE 1: SIDESTEP LEFT UNTIL CLEAR ===== */
-    case AV_P1_TURN_LEFT:
-        printf("[P1] Turning left 90°\n");
-=======
     
     /* ===== STEP 1: STOP AND TURN LEFT 90° ===== */
     
     case AV_TURN_LEFT:
         if (!timer_expired()) return;
         printf("[Step 1] Turning left 90°\n");
->>>>>>> Stashed changes
         start_turn_left_90();
         A.state = AV_DRIVE_FORWARD_STEP2;
         break;
-<<<<<<< Updated upstream
-
-    case AV_P1_TURN_LEFT_WAIT:
-        if (turn_complete()) {
-            A.state = AV_P1_DRIVE_20CM;
-        }
-        break;
-
-    case AV_P1_DRIVE_20CM:
-        printf("[P1] Driving 20cm left (x = %lu cm)\n",
-               (unsigned long)(A.lateral_displacement_cm + 20));
-        A.lateral_displacement_cm += 20;
-=======
     
     /* ===== STEP 2: MOVE FORWARD, STOP, TURN RIGHT 90° ===== */
     
     case AV_DRIVE_FORWARD_STEP2:
         if (!turn_complete(false)) return;
         printf("[Step 2] Moving forward\n");
->>>>>>> Stashed changes
         do_drive_20cm();
         A.state = AV_TURN_RIGHT_STEP2;
         break;
-<<<<<<< Updated upstream
-
-    case AV_P1_TURN_RIGHT:
-        printf("[P1] Turning right 90° (facing object)\n");
-=======
         
     case AV_TURN_RIGHT_STEP2:
         if (!timer_expired()) return;
         printf("[Step 2] Stopping and turning right 90°\n");
->>>>>>> Stashed changes
         start_turn_right_90();
         A.state = AV_CHECK_CLEAR;
         break;
-<<<<<<< Updated upstream
-
-    case AV_P1_TURN_RIGHT_WAIT:
-        if (turn_complete()) {
-            A.state = AV_P1_CHECK_CLEAR;
-        }
-        break;
-
-    case AV_P1_CHECK_CLEAR:
-        do_pause();
-        dist = ultra_read_cm();
-        printf("[P1] USS check: %lu cm | ", (unsigned long)dist);
-
-=======
     
     /* ===== STEP 3: CHECK IF OBSTACLE IS STILL THERE ===== */
     
@@ -535,28 +342,11 @@ static void avoider_tick(void) {
         dist = ultra_read_cm();
         printf("[Step 3] Checking if obstacle is clear: %lu cm | ", (unsigned long)dist);
         
->>>>>>> Stashed changes
         if (dist > OBSTACLE_CLEAR_CM) {
             printf("Clear! Moving to Step 4\n");
             set_timer_ms(PAUSE_MS);
             A.state = AV_TURN_LEFT_STEP4;
         } else {
-<<<<<<< Updated upstream
-            printf("Still blocked. Continuing left sidestep\n");
-
-            if (A.lateral_displacement_cm >= MAX_SIDESTEP_CM) {
-                printf("[ERROR] Max sidestep reached! Aborting.\n");
-                A.state = AV_COMPLETE;
-            } else {
-                A.state = AV_P1_TURN_LEFT;  // Repeat sidestep
-            }
-        }
-        break;
-
-    /* ===== PHASE 2: FINAL LEFT CLEARANCE ===== */
-    case AV_P2_TURN_LEFT:
-        printf("[P2] Final left turn 90°\n");
-=======
             printf("Still blocked. Repeating from Step 1\n");
             set_timer_ms(PAUSE_MS);
             A.state = AV_TURN_LEFT;  // Go back to Step 1
@@ -568,60 +358,23 @@ static void avoider_tick(void) {
     case AV_TURN_LEFT_STEP4:
         if (!timer_expired()) return;
         printf("[Step 4] Turning left 90°\n");
->>>>>>> Stashed changes
         start_turn_left_90();
         A.state = AV_DRIVE_SLIGHTLY_STEP4;
         break;
-<<<<<<< Updated upstream
-
-    case AV_P2_TURN_LEFT_WAIT:
-        if (turn_complete()) {
-            A.state = AV_P2_DRIVE_20CM;
-        }
-        break;
-
-    case AV_P2_DRIVE_20CM:
-        printf("[P2] Final 20cm safety margin (x = %lu cm total)\n",
-               (unsigned long)(A.lateral_displacement_cm + 20));
-        A.lateral_displacement_cm += 20;
-=======
         
     case AV_DRIVE_SLIGHTLY_STEP4:
         if (!turn_complete(false)) return;
         printf("[Step 4] Moving forward slightly\n");
->>>>>>> Stashed changes
         do_drive_20cm();
         A.state = AV_TURN_RIGHT_STEP4;
         break;
-<<<<<<< Updated upstream
-
-    case AV_P2_TURN_RIGHT:
-        printf("[P2] Turning right 90° (facing forward)\n");
-=======
         
     case AV_TURN_RIGHT_STEP4:
         if (!timer_expired()) return;
         printf("[Step 4] Turning right 90°\n");
->>>>>>> Stashed changes
         start_turn_right_90();
         A.state = AV_DRIVE_FORWARD_FINAL;
         break;
-<<<<<<< Updated upstream
-
-    case AV_P2_TURN_RIGHT_WAIT:
-        if (turn_complete()) {
-            A.state = AV_P3_DRIVE_70CM;
-        }
-        break;
-
-    /* ===== PHASE 3: PASS ALONGSIDE OBJECT, THEN DONE ===== */
-    case AV_P3_DRIVE_70CM:
-        printf("[P3] Driving 70cm forward (passing object)\n");
-        do_drive_70cm();
-        A.state = AV_COMPLETE;   // <-- go straight to complete (no check-right phases)
-        break;
-
-=======
         
     case AV_DRIVE_FORWARD_FINAL:
         if (!turn_complete(true)) return;
@@ -652,13 +405,6 @@ static void avoider_tick(void) {
 
 void ultra_obstacle_aware_apply(DriveCmd desired) {
     if (A.mode == MODE_MANUAL) {
-<<<<<<< Updated upstream
-        // Check if user wants to go forward
-        bool wants_forward = (desired == CMD_FORWARD ||
-                              desired == CMD_FWD_LEFT ||
-                              desired == CMD_FWD_RIGHT);
-
-=======
         bool wants_forward = (desired == CMD_FORWARD || 
                              desired == CMD_FWD_LEFT || 
                              desired == CMD_FWD_RIGHT);
@@ -671,12 +417,7 @@ void ultra_obstacle_aware_apply(DriveCmd desired) {
                 return;
             }
         }
-<<<<<<< Updated upstream
-
-        // Normal manual control
-=======
         
->>>>>>> Stashed changes
         ultra_apply_direct(desired);
 
     } else {
