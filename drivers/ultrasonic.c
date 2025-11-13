@@ -169,8 +169,6 @@ static inline bool timer_expired(void) {
     return absolute_time_diff_us(get_absolute_time(), A.action_until) <= 0;
 }
 
-<<<<<<< Updated upstream
-=======
 /* ========== IMU TURN HELPERS ========== */
 
 static inline float normalize_angle(float angle) {
@@ -383,7 +381,6 @@ static void avoider_tick(void) {
         A.state = AV_COMPLETE;
         break;
     
->>>>>>> Stashed changes
     /* ===== COMPLETE ===== */
     case AV_COMPLETE:
         if (!timer_expired()) return;
@@ -409,7 +406,6 @@ void ultra_obstacle_aware_apply(DriveCmd desired) {
                              desired == CMD_FWD_LEFT || 
                              desired == CMD_FWD_RIGHT);
         
->>>>>>> Stashed changes
         if (wants_forward) {
             uint32_t dist = ultra_read_cm();
             if (dist > 0 && dist <= OBSTACLE_DETECT_CM) {
