@@ -4,8 +4,7 @@
 
 // based on PICO_CONFIG_HEADER_FILES:
 
-#include "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/pico-sdk/src/boards/include/boards/pico_w.h"
+#include "/Users/lucas/School/Y2 T1/INF2004 Embedded Systems/pico/pico-sdk/src/boards/include/boards/pico_w.h"
+#include "/Users/lucas/School/Y2 T1/INF2004 Embedded Systems/pico/pico-sdk/src/rp2_common/cmsis/include/cmsis/rename_exceptions.h"
 
 // based on PICO_RP2040_CONFIG_HEADER_FILES:
-
-#include "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/pico-sdk/src/rp2_common/cmsis/include/cmsis/rename_exceptions.h"
