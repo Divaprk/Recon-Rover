@@ -20,6 +20,10 @@
 #define TURN_TIMEOUT_MS     15000
 #define IMU_SAMPLE_MS       50      // Sample IMU every 50ms while turning
 
+// --- Averaged heading samples ---
+#define START_HEADING_SAMPLES 10
+#define START_HEADING_DELAY_MS 10
+
 // Power levels for different error ranges
 #define TURN_POWER_HIGH     70      // Far from target (>30°)
 #define TURN_POWER_MED      45      // Medium distance (15-30°)
@@ -141,6 +145,14 @@ typedef enum {
     AV_DRIVE_SLIGHTLY_STEP4,
     AV_TURN_RIGHT_STEP4,
     AV_DRIVE_FORWARD_FINAL,
+
+    // --- ADDED: Pause for stability ---
+    AV_RETURN_PAUSE_BEFORE_TURN,
+    
+    // --- ADDED: NEW STATES for the return maneuver ---
+    AV_RETURN_TURN_RIGHT,
+    AV_RETURN_DRIVE_LATERAL,
+    AV_RETURN_TURN_LEFT,
     
     AV_COMPLETE
 } AvoidState;
@@ -155,6 +167,9 @@ typedef struct {
     float turn_target_heading;
     absolute_time_t turn_timeout;
     absolute_time_t next_imu_sample;
+
+    // --- Tracks how many sidesteps we've made ---
+    uint8_t lateral_step_count;
 } Avoider;
 
 static Avoider A = {0};
@@ -167,6 +182,44 @@ static inline void set_timer_ms(int ms) {
 
 static inline bool timer_expired(void) {
     return absolute_time_diff_us(get_absolute_time(), A.action_until) <= 0;
+}
+
+/**
+ * @brief Reads the IMU multiple times to get a stable, averaged heading.
+ * Handles 0/360 degree wraparound correctly.
+ * @return Averaged heading in degrees (0-360)
+ */
+static float imu_get_averaged_heading(void) {
+    float sum_x = 0.0f;
+    float sum_y = 0.0f;
+    imu_vector_t mag;
+
+    for (int i = 0; i < START_HEADING_SAMPLES; i++) {
+        imu_read_mag(&mag);
+        float heading_deg = imu_calculate_heading(&mag);
+        
+        // Convert heading to radians for trig functions
+        float heading_rad = heading_deg * M_PI / 180.0f;
+        
+        sum_x += cosf(heading_rad);
+        sum_y += sinf(heading_rad);
+        
+        sleep_ms(START_HEADING_DELAY_MS);
+    }
+    
+    float avg_x = sum_x / START_HEADING_SAMPLES;
+    float avg_y = sum_y / START_HEADING_SAMPLES;
+    
+    // Calculate the average angle from the averaged vector
+    float avg_heading_rad = atan2f(avg_y, avg_x);
+    float avg_heading_deg = avg_heading_rad * 180.0f / M_PI;
+    
+    // Convert from atan2's -180/180 range to our 0-360 range
+    if (avg_heading_deg < 0.0f) {
+        avg_heading_deg += 360.0f;
+    }
+    
+    return avg_heading_deg;
 }
 
 /* ========== IMU TURN HELPERS ========== */
@@ -185,9 +238,9 @@ static inline float angle_difference(float target, float current) {
 }
 
 static inline void start_turn_left_90(void) {
-    imu_vector_t mag;
-    imu_read_mag(&mag);
-    A.turn_start_heading = imu_calculate_heading(&mag);
+    // --- Use averaged heading ---
+    A.turn_start_heading = imu_get_averaged_heading();
+    
     A.turn_target_heading = normalize_angle(A.turn_start_heading - TURN_TARGET_DEG);
     A.turn_timeout = delayed_by_ms(get_absolute_time(), TURN_TIMEOUT_MS);
     A.next_imu_sample = get_absolute_time();
@@ -199,9 +252,9 @@ static inline void start_turn_left_90(void) {
 }
 
 static inline void start_turn_right_90(void) {
-    imu_vector_t mag;
-    imu_read_mag(&mag);
-    A.turn_start_heading = imu_calculate_heading(&mag);
+    // --- Use averaged heading ---
+    A.turn_start_heading = imu_get_averaged_heading();
+    
     A.turn_target_heading = normalize_angle(A.turn_start_heading + TURN_TARGET_DEG);
     A.turn_timeout = delayed_by_ms(get_absolute_time(), TURN_TIMEOUT_MS);
     A.next_imu_sample = get_absolute_time();
@@ -296,7 +349,11 @@ static inline void start_avoidance(void) {
     printf("[Step 1] Stopping and preparing to turn left\n");
     A.mode = MODE_AVOID;
     A.state = AV_TURN_LEFT;
-    set_timer_ms(PAUSE_MS);  // Changed from do_pause() to explicit timer
+    
+    // --- Reset our step counter ---
+    A.lateral_step_count = 0; 
+
+    set_timer_ms(PAUSE_MS);
 }
 
 /* ========== STATE MACHINE TICK ========== */
@@ -321,6 +378,11 @@ static void avoider_tick(void) {
         if (!turn_complete(false)) return;
         printf("[Step 2] Moving forward\n");
         do_drive_20cm();
+
+        // --- Increment step counter ---
+        A.lateral_step_count++;
+        printf("  Lateral step count is now: %u\n", A.lateral_step_count);
+        
         A.state = AV_TURN_RIGHT_STEP2;
         break;
         
@@ -336,7 +398,6 @@ static void avoider_tick(void) {
     case AV_CHECK_CLEAR:
         if (!turn_complete(true)) return;
         
-        // Quick 1 second check - no waiting
         dist = ultra_read_cm();
         printf("[Step 3] Checking if obstacle is clear: %lu cm | ", (unsigned long)dist);
         
@@ -364,6 +425,12 @@ static void avoider_tick(void) {
         if (!turn_complete(false)) return;
         printf("[Step 4] Moving forward slightly\n");
         do_drive_20cm();
+        
+        // --- **** THIS IS THE FIX **** ---
+        A.lateral_step_count++;
+        printf("  Lateral step count is now: %u\n", A.lateral_step_count);
+        // --- **** END FIX **** ---
+        
         A.state = AV_TURN_RIGHT_STEP4;
         break;
         
@@ -373,17 +440,58 @@ static void avoider_tick(void) {
         start_turn_right_90();
         A.state = AV_DRIVE_FORWARD_FINAL;
         break;
-        
+    
     case AV_DRIVE_FORWARD_FINAL:
         if (!turn_complete(true)) return;
         printf("[Step 4] Moving forward to pass obstacle\n");
         do_drive_70cm();
+        A.state = AV_RETURN_PAUSE_BEFORE_TURN; // Go to pause state
+        break;
+    
+    // --- ADDED: Pause state ---
+    case AV_RETURN_PAUSE_BEFORE_TURN:
+        if (!timer_expired()) return; // Wait for the 2.5s drive to finish
+        printf("[Step 5] Pausing for stability\n");
+        do_pause(); // This stops motors and sets PAUSE_MS timer
+        A.state = AV_RETURN_TURN_RIGHT;
+        break;
+
+    // This is your new "Step 5": Turn right 90°
+    case AV_RETURN_TURN_RIGHT:
+        if (!timer_expired()) return; // Now waits for PAUSE_MS
+        printf("[Step 5] Turning right 90° to return to path\n");
+        start_turn_right_90();
+        A.state = AV_RETURN_DRIVE_LATERAL;
+        break;
+
+    // This is your new "Step 6": Drive laterally N * 20cm
+    case AV_RETURN_DRIVE_LATERAL:
+        if (!turn_complete(true)) return; // Wait for turn to finish
+        
+        uint32_t return_drive_ms = A.lateral_step_count * DRIVE_20CM_MS;
+        printf("[Step 6] Driving laterally to return (N=%u, %lu ms)\n",
+               A.lateral_step_count, (unsigned long)return_drive_ms);
+               
+        motor_forward();
+        set_timer_ms(return_drive_ms);
+        A.state = AV_RETURN_TURN_LEFT;
+        break;
+
+    // This is the final step: Turn left 90° to face forward again
+    case AV_RETURN_TURN_LEFT:
+        if (!timer_expired()) return;
+        printf("[Step 7] Turning left 90° to face original direction\n");
+        start_turn_left_90();
         A.state = AV_COMPLETE;
         break;
     
+    /* --- END ADD --- */
+
     /* ===== COMPLETE ===== */
     case AV_COMPLETE:
-        if (!timer_expired()) return;
+        // --- Wait for final turn to complete ---
+        if (!turn_complete(false)) return; 
+        
         motor_stop();
         printf("=== AVOIDANCE COMPLETE - RETURNING CONTROL TO USER ===\n\n");
         A.mode = MODE_MANUAL;
