@@ -1,191 +1,149 @@
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include "pico/stdlib.h"
-
-// --- Application Includes ---
 #include "pico/cyw43_arch.h"
 #include "lwip/udp.h"
-#include "lwip/netif.h"
-#include "lwip/ip4_addr.h"
+#include "lwip/ip_addr.h"
 
-// --- DRIVER INCLUDES ---
+// Drivers
 #include "drivers/motor.h"
-#include "drivers/encoder.h"
 #include "drivers/ultrasonic.h"
 #include "drivers/imu.h"
-#include "drivers/lidar.h"  // <-- NEW: LIDAR driver
+#include "drivers/encoder.h"
+#include "drivers/lidar.h" 
 
-// ========== APPLICATION SETTINGS ==========
+// --- WIFI CONFIG ---
 #define WIFI_SSID "Diva iPhone"
 #define WIFI_PASS "91902017"
-#define CTRL_PORT 5000
-#define TELEMETRY_PORT 5001
-// LIDAR uses port 5005 (defined in lidar.h)
+#define LAPTOP_IP "172.20.10.8" 
+#define UDP_PORT  5005          
 
-// ========== APPLICATION GLOBALS ==========
-static struct udp_pcb *udp_server = NULL;
+// --- TIMING CONSTANTS ---
+#define TELEMETRY_MS    500     
+#define SENSOR_READ_MS  50      
+#define MAP_UPDATE_MS   140     
 
-// This is the ONLY command that should be consumed by the motor layer.
-// Ultrasonic will either forward it or temporarily override to avoid obstacles.
-static volatile DriveCmd g_desired_cmd = CMD_STOP;
-
-// --- Global variable to share sensor data with other modules ---
+// --- GLOBAL VARIABLES ---
 volatile uint32_t g_current_distance_cm = 0;
-
-// --- Global variables for IMU data ---
 volatile float g_current_heading = 0.0f;
 volatile float g_current_tilt_x = 0.0f;
 volatile float g_current_tilt_y = 0.0f;
 
-// ==========================================================
-//               TELEOP UDP FUNCTIONS
-// ==========================================================
+// --- STATE FLAG ---
+bool lidar_active = false; // <--- Starts FALSE
 
-static bool contains_cmd(const char *buf, const char *tok) {
-    size_t n = strlen(buf), m = strlen(tok);
-    if (m == 0 || n < m) return false;
-    for (size_t i = 0; i + m <= n; ++i) {
-        bool match = true;
-        for (size_t j = 0; j < m; ++j) {
-            char a = buf[i + j], b = tok[j];
-            if (a >= 'A' && a <= 'Z') a += 32;
-            if (b >= 'A' && b <= 'Z') b += 32;
-            if (a != b) { match = false; break; }
-        }
-        if (match) return true;
-    }
-    return false;
+struct udp_pcb *udp_socket = NULL;
+ip_addr_t dest_addr;
+
+// --- HELPER ---
+bool cmd_is(const char *data, int len, const char *cmd_str) {
+    if (len != strlen(cmd_str)) return false;
+    return (strncmp(data, cmd_str, len) == 0);
 }
 
-static void udp_recv_cb(void *arg, struct udp_pcb *pcb, struct pbuf *p,
-                        const ip_addr_t *addr, u16_t port) {
-    if (!p) return;
-
-    char buf[128];
-    size_t len = (p->len < sizeof(buf) - 1) ? p->len : sizeof(buf) - 1;
-    memcpy(buf, p->payload, len);
-    buf[len] = '\0';
-
-    // Map incoming text to our desired command (do NOT call motor_* here).
-    if      (contains_cmd(buf, "forward_left"))     g_desired_cmd = CMD_FWD_LEFT;
-    else if (contains_cmd(buf, "forward_right"))    g_desired_cmd = CMD_FWD_RIGHT;
-    else if (contains_cmd(buf, "backward_left"))    g_desired_cmd = CMD_BWD_LEFT;
-    else if (contains_cmd(buf, "backward_right"))   g_desired_cmd = CMD_BWD_RIGHT;
-    else if (contains_cmd(buf, "forward"))          g_desired_cmd = CMD_FORWARD;
-    else if (contains_cmd(buf, "backward"))         g_desired_cmd = CMD_BACKWARD;
-    else if (contains_cmd(buf, "left"))             g_desired_cmd = CMD_LEFT;
-    else if (contains_cmd(buf, "right"))            g_desired_cmd = CMD_RIGHT;
-    else                                            g_desired_cmd = CMD_STOP;
-
-    // Set telemetry target (remote IP, fixed TELEMETRY_PORT)
-    encoder_set_remote_udp_target(pcb, addr, TELEMETRY_PORT);
+void udp_recv_cb(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
+    if (p == NULL) return;
+    char *data = (char *)p->payload;
+    int len = p->len;
     
-    // NEW: Set LIDAR map streaming target (same IP, port 5005)
-    lidar_set_map_target(pcb, addr);
+    // --- WASD COMMANDS ---
+    DriveCmd cmd = CMD_STOP;
+    if      (cmd_is(data, len, "forward_left"))   cmd = CMD_FWD_LEFT;
+    else if (cmd_is(data, len, "forward_right"))  cmd = CMD_FWD_RIGHT;
+    else if (cmd_is(data, len, "backward_left"))  cmd = CMD_BWD_LEFT;
+    else if (cmd_is(data, len, "backward_right")) cmd = CMD_BWD_RIGHT;
+    else if (cmd_is(data, len, "forward"))        cmd = CMD_FORWARD;
+    else if (cmd_is(data, len, "backward"))       cmd = CMD_BACKWARD;
+    else if (cmd_is(data, len, "left"))           cmd = CMD_LEFT;
+    else if (cmd_is(data, len, "right"))          cmd = CMD_RIGHT;
+    else if (cmd_is(data, len, "stop"))           cmd = CMD_STOP;
+    
+    // --- LIDAR TOGGLE COMMAND ---
+    else if (cmd_is(data, len, "toggle_lidar")) {
+        if (!lidar_active) {
+            printf("CMD: Start Lidar\n");
+            lidar_start();
+            lidar_active = true;
+        } else {
+            printf("CMD: Stop Lidar\n");
+            lidar_stop();
+            lidar_active = false;
+        }
+    }
 
+    ultra_obstacle_aware_apply(cmd);
     pbuf_free(p);
 }
 
-// ==========================================================
-//                      MAIN FUNCTION
-// ==========================================================
-
-int main(void) {
-    // --- 1. System Init ---
-    stdio_init_all();
-    sleep_ms(2000); // Wait for USB serial
-    printf("=================================================\n");
-    printf("     RECON ROVER - Autonomous Mapping System    \n");
-    printf("=================================================\n");
-    printf("Initializing systems...\n\n");
-
-    // --- 2. Wi-Fi Init ---
-    if (cyw43_arch_init()) {
-        printf("ERROR: CYW43 init failed\n");
-        return -1;
-    }
-    cyw43_arch_enable_sta_mode();
-    printf("[WiFi] Connecting to SSID: %s\n", WIFI_SSID);
-
-    int rc = cyw43_arch_wifi_connect_timeout_ms(
-        WIFI_SSID, WIFI_PASS, CYW43_AUTH_WPA2_AES_PSK, 30000
-    );
-    if (rc) {
-        printf("ERROR: Wi-Fi connect failed, rc=%d\n", rc);
-        return -1;
-    }
-    printf("[WiFi] Connected!\n");
-    
-    const ip4_addr_t *ip = netif_ip4_addr(netif_default);
-    printf("[WiFi] IP Address: %s\n\n", ip4addr_ntoa(ip));
-
-    // --- 3. DRIVER Init ---
-    printf("[Drivers] Initializing motor controller...\n");
-    motor_init_pins();
-    motor_stop();
-    
-    printf("[Drivers] Initializing encoders...\n");
-    encoder_init();
-    
-    printf("[Drivers] Initializing ultrasonic sensor...\n");
-    ultra_init();
-    
-    printf("[Drivers] Initializing IMU...\n");
-    imu_init();
-    
-    printf("[Drivers] Initializing LIDAR...\n");  // <-- NEW
-    lidar_init();
-    
-    printf("[Drivers] All drivers initialized.\n\n");
-
-    // --- 4. UDP Server Init ---
-    udp_server = udp_new();
-    if (!udp_server) {
-        printf("ERROR: Failed to create UDP PCB\n");
-        return -1;
-    }
-    err_t err = udp_bind(udp_server, IP_ADDR_ANY, CTRL_PORT);
-    if (err != ERR_OK) {
-        printf("ERROR: UDP bind failed: %d\n", err);
-        return -1;
-    }
-    udp_recv(udp_server, udp_recv_cb, NULL);
-    printf("[UDP] Command server listening on port %d\n", CTRL_PORT);
-    printf("[UDP] Telemetry will be sent to port %d\n", TELEMETRY_PORT);
-    printf("[UDP] LIDAR map will be sent to port %d\n", LIDAR_MAP_PORT);
-
-    // --- 5. Start LIDAR Scanning ---
-    printf("\n[LIDAR] Starting LIDAR scan...\n");
-    lidar_start_scan();  // <-- NEW
-    printf("[LIDAR] Mapping active!\n\n");
-
-    // --- 6. Main Loop ---
-    printf("=================================================\n");
-    printf("     ALL SYSTEMS OPERATIONAL - READY TO DRIVE   \n");
-    printf("=================================================\n");
-    printf("Send commands on UDP port %d to control rover\n", CTRL_PORT);
-    printf("Run viewer_map.py on your laptop to see the map\n");
-    printf("Run telemetry_listener.py to see sensor data\n\n");
-    
-    // Variables for IMU data
+void update_sensors(void) {
+    g_current_distance_cm = ultra_read_cm();
     imu_vector_t accel, mag;
-    
-    while (true) {
-        // 1. Ultrasonic obstacle avoidance and motor control
-        ultra_obstacle_aware_apply(g_desired_cmd);
-        g_current_distance_cm = ultra_read_cm();
+    imu_read_accel(&accel);
+    imu_read_mag(&mag);
+    g_current_heading = imu_calculate_heading(&mag);
+    g_current_tilt_x  = imu_calculate_tilt_x(&accel);
+    g_current_tilt_y  = imu_calculate_tilt_y(&accel);
+}
 
-        // 2. Read IMU data
-        imu_read_accel(&accel);
-        imu_read_mag(&mag);
-        g_current_heading = imu_calculate_heading(&mag);
-        g_current_tilt_x = imu_calculate_tilt_x(&accel);
-        g_current_tilt_y = imu_calculate_tilt_y(&accel);
+int main() {
+    stdio_init_all();
+    sleep_ms(2000); 
+    printf("--- Recon Rover Final: TOGGLE MODE ---\n");
 
-        // 3. NEW: Process LIDAR data and update map
-        lidar_process();
-
-        // 4. Service the background tasks (WiFi polling, etc.)
-        tight_loop_contents();
+    if (cyw43_arch_init()) { printf("Wi-Fi Init failed!\n"); return 1; }
+    cyw43_arch_enable_sta_mode();
+    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, CYW43_AUTH_WPA2_AES_PSK, 15000)) {
+        printf("Wi-Fi connection failed.\n");
+        return 1;
     }
+    printf("Wi-Fi Connected! IP: %s\n", ip4addr_ntoa(netif_ip4_addr(netif_list)));
+
+    udp_socket = udp_new();
+    ipaddr_aton(LAPTOP_IP, &dest_addr);
+    udp_bind(udp_socket, IP_ADDR_ANY, UDP_PORT);
+    udp_recv(udp_socket, udp_recv_cb, NULL);
+
+    imu_init();
+    motor_init_pins();
+    ultra_init();
+    encoder_init();
+    lidar_init(); // Init memory/UART, but DO NOT START yet.
+
+    encoder_set_remote_udp_target(udp_socket, &dest_addr, UDP_PORT); 
+    lidar_set_udp_target(udp_socket, &dest_addr, UDP_PORT); 
+    
+    // Note: lidar_start() is REMOVED from here.
+
+    absolute_time_t next_telemetry_time = get_absolute_time();
+    absolute_time_t next_sensor_time = get_absolute_time();
+    absolute_time_t next_map_time = get_absolute_time();
+
+    while (true) {
+        cyw43_arch_poll();
+        
+        // ONLY process LIDAR if active
+        if (lidar_active) {
+            lidar_update(); 
+        }
+
+        if (absolute_time_diff_us(get_absolute_time(), next_telemetry_time) < 0) {
+            encoder_update_and_report(); 
+            next_telemetry_time = delayed_by_ms(get_absolute_time(), TELEMETRY_MS);
+        }
+
+        if (absolute_time_diff_us(get_absolute_time(), next_sensor_time) < 0) {
+            update_sensors();
+            next_sensor_time = delayed_by_ms(get_absolute_time(), SENSOR_READ_MS);
+        }
+        
+        // ONLY stream map if active
+        if (lidar_active && absolute_time_diff_us(get_absolute_time(), next_map_time) < 0) {
+            lidar_send_map_chunked(); 
+            next_map_time = delayed_by_ms(get_absolute_time(), MAP_UPDATE_MS);
+        }
+        
+        sleep_us(50); 
+    }
+    return 0;
 }

@@ -1,19 +1,16 @@
 #ifndef ENCODER_H
 #define ENCODER_H
 
-// --- ADD THESE ---
-#include "lwip/ip_addr.h" // For ip_addr_t
-struct udp_pcb; // Forward declaration is fine for a pointer
-// --- END ADD ---
+#include "lwip/ip_addr.h"
+struct udp_pcb;
 
-// Call this once in main() to set up the encoders,
-// interrupts, and reporting timer.
+// Initialize pins and GPIO interrupts (NO timer anymore)
 void encoder_init(void);
 
-// --- ADD THIS FUNCTION PROTOTYPE ---
-// Call this from udp_recv_cb in main.c to tell the encoder
-// where to send telemetry data.
+// Configure where to send UDP data
 void encoder_set_remote_udp_target(struct udp_pcb *pcb, const ip_addr_t *addr, u16_t port);
-// --- END ADD ---
+
+// New function: Call this from main loop to calc speeds and send UDP
+void encoder_update_and_report(void);
 
 #endif // ENCODER_H

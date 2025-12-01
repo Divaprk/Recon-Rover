@@ -4,17 +4,17 @@
             "name": "Pico",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${env:PICO_SDK_PATH}/**"
+                "${userHome}/.pico-sdk/sdk/2.2.0/**"
             ],
-            "defines": [
-                "PICO_DEFAULT_UART=0",
-                "PICO_DEFAULT_UART_TX_PIN=0",
-                "PICO_DEFAULT_UART_RX_PIN=1",
-                "PICO_DEFAULT_LED_PIN=25"
+            "forcedInclude": [
+                "${workspaceFolder}/build/generated/pico_base/pico/config_autogen.h",
+                "${userHome}/.pico-sdk/sdk/2.2.0/src/common/pico_base_headers/include/pico.h"
             ],
-            "compilerPath": "arm-none-eabi-gcc",
-            "cStandard": "c11",
-            "cppStandard": "c++17",
+            "defines": [],
+            "compilerPath": "${userHome}/.pico-sdk/toolchain/14_2_Rel1/bin/arm-none-eabi-gcc.exe",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "cStandard": "c17",
+            "cppStandard": "c++14",
             "intelliSenseMode": "linux-gcc-arm"
         }
     ],
